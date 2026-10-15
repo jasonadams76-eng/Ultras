@@ -1,0 +1,238 @@
+<!doctype html><html><head><meta charset="utf-8"><title>The Ultras: Open City</title>
+<style>
+body{margin:0;overflow:hidden;font-family:sans-serif}
+#hud{position:fixed;top:8px;left:8px;color:#fff;background:#0009;padding:10px;border-radius:6px;font-size:14px;max-width:340px;line-height:1.4}
+#msg{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);color:#fff;background:#000b;padding:10px 16px;border-radius:8px;display:none;max-width:500px;text-align:center}
+</style></head><body>
+<div id="hud"></div><div id="msg"></div>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const R=(a,b)=>a+Math.random()*(b-a);
+
+// ---------- scene ----------
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87b8e8);
+scene.fog=new THREE.Fog(0x87b8e8,150,700);
+const cam=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.1,1500);
+const ren=new THREE.WebGLRenderer({antialias:true});
+ren.setSize(innerWidth,innerHeight);
+document.body.appendChild(ren.domElement);
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight);});
+scene.add(new THREE.HemisphereLight(0xffffff,0x445566,1.0));
+const sun=new THREE.DirectionalLight(0xffffff,1.5);sun.position.set(100,200,50);scene.add(sun);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(1400,1400),new THREE.MeshLambertMaterial({color:0x333840}));
+ground.rotation.x=-Math.PI/2;scene.add(ground);
+
+// ---------- city ----------
+const B=[];
+for(let i=-7;i<=7;i++)for(let j=-7;j<=7;j++){
+  if(!i&&!j)continue; // ORACLE plaza
+  const w=R(16,26),d=R(16,26),h=R(15,95),x=i*40,z=j*40;
+  const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(R(.55,.65),.15,R(.3,.6))}));
+  m.position.set(x,h/2,z);scene.add(m);B.push({x,z,w,d,h});
+}
+const ring=new THREE.Mesh(new THREE.CylinderGeometry(8,8,.3,32),new THREE.MeshBasicMaterial({color:0x3366ff}));
+ring.position.y=.15;scene.add(ring);
+
+// ---------- helpers ----------
+function figure(col,s=1){
+  const g=new THREE.Group();
+  const mat=c=>new THREE.MeshLambertMaterial({color:c});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.9,1.4,.5),mat(col));body.position.y=1.2;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.3),mat(0xe0b090));head.position.y=2.2;
+  const legs=new THREE.Mesh(new THREE.BoxGeometry(.8,.8,.4),mat(0x222222));legs.position.y=.4;
+  g.add(body,head,legs);g.scale.setScalar(s);scene.add(g);return g;
+}
+function label(text,y=3.2){
+  const c=document.createElement('canvas');c.width=256;c.height=64;
+  const x=c.getContext('2d');x.fillStyle='#0009';x.fillRect(0,0,256,64);
+  x.fillStyle='#fff';x.font='20px sans-serif';x.textAlign='center';x.fillText(text,128,38);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));
+  sp.scale.set(4,1,1);sp.position.y=y;return sp;
+}
+const hudEl=document.getElementById('hud'),msgEl=document.getElementById('msg');
+let msgT=0;
+function msg(t,ms=4500){msgEl.textContent=t;msgEl.style.display='block';clearTimeout(msgT);msgT=setTimeout(()=>msgEl.style.display='none',ms);}
+
+// ---------- player ----------
+const P={g:figure(0xc0c8d8),vy:0,hp:100,xp:0,fly:false};
+P.pos=P.g.position;P.pos.set(0,0,10);
+
+// ---------- quest givers ----------
+const givers=[];
+[['Victor Cross',6,0,0x3355aa],['Frankie Vega',20,-20,0xaa7733]].forEach(([name,x,z,c])=>{
+  const g=figure(c);g.add(label(name+' [E]'));g.position.set(x,0,z);givers.push({name,g});
+});
+const Q=[
+ {giver:'Victor Cross',title:'Clear the Streets',text:'Corvetti thugs are shaking down the district. Take out 4.',type:'thug',n:4,xp:100},
+ {giver:'Frankie Vega',title:'Hired Muscle',text:"You didn't hear this from me. Corvetti enforcers got new toys. Drop 3.",type:'enforcer',n:3,xp:200},
+ {giver:'Victor Cross',title:'The Ledger',text:'Dominic Corvetti is holed up in the northeast. End this.',type:'boss',n:1,xp:500}
+];
+let qi=0,active=null,prog=0;
+function interact(){
+  const gv=givers.find(v=>v.g.position.distanceTo(P.pos)<7);
+  if(!gv)return;
+  if(active){
+    if(prog>=active.n){
+      if(gv.name!==active.giver)return msg(`Report back to ${active.giver}.`);
+      P.xp+=active.xp;msg(`Quest complete: ${active.title}! +${active.xp} XP`);
+      active=null;qi=(qi+1)%Q.length;
+    } else msg(`${active.title}: ${prog}/${active.n}`);
+    return;
+  }
+  const q=Q[qi];
+  if(q.giver!==gv.name)return msg(`${gv.name}: Nothing for you right now. Try ${q.giver}.`);
+  active=q;prog=0;msg(`${gv.name}: ${q.text}`,7000);
+}
+
+// ---------- enemies (respawn after defeat) ----------
+const T={
+  thug:{hp:60,dmg:8,col:0x992222,s:1,spd:7,name:'Corvetti Thug',rt:20},
+  enforcer:{hp:130,dmg:14,col:0x661155,s:1.3,spd:6,name:'Enforcer',rt:30},
+  boss:{hp:450,dmg:25,col:0x111111,s:2,spd:5,name:'Dominic "The Ledger" Corvetti',rt:60}
+};
+const E=[];
+function spawn(type,x,z){
+  const t=T[type],g=figure(t.col,t.s);
+  g.add(label(t.name,3.4));
+  const bar=new THREE.Sprite(new THREE.SpriteMaterial({color:0xff2222,depthTest:false}));
+  bar.scale.set(2,.2,1);bar.position.y=2.9;g.add(bar);
+  g.position.set(x,0,z);
+  E.push({type,t,g,bar,hp:t.hp,home:new THREE.Vector3(x,0,z),alive:true,respawnAt:0,cd:0});
+}
+[[60,60,'thug',4],[-100,60,'thug',4],[140,-100,'enforcer',3],[-140,-140,'enforcer',3],[220,220,'thug',3]]
+  .forEach(([x,z,t,n])=>{for(let k=0;k<n;k++)spawn(t,x+R(-5,5),z+R(-5,5));});
+spawn('boss',260,260);
+
+function damageEnemy(e,amt,now){
+  e.hp-=amt;
+  e.bar.scale.x=Math.max(.01,2*e.hp/e.t.hp);
+  if(e.hp<=0){
+    e.alive=false;e.g.visible=false;e.respawnAt=now+e.t.rt;P.xp+=10;
+    if(active&&active.type===e.type&&prog<active.n){
+      prog++;
+      msg(prog>=active.n?`Objective done! Return to ${active.giver}.`:`${active.title}: ${prog}/${active.n}`,3000);
+    }
+  }
+}
+function hurtPlayer(d){
+  P.hp-=d;
+  if(P.hp<=0){P.hp=100;P.pos.set(0,0,10);msg('ORACLE extracted you. Victor Cross: "Try not to die again."');}
+}
+
+// ---------- combat ----------
+const shots=[];
+const blastGeo=new THREE.SphereGeometry(.4),blastMat=new THREE.MeshBasicMaterial({color:0x66ccff});
+let blastCd=0,meleeCd=0;
+function fire(){
+  if(blastCd>0)return;blastCd=.3;
+  const m=new THREE.Mesh(blastGeo,blastMat);
+  m.position.copy(P.pos);m.position.y+=1.5;
+  const dir=new THREE.Vector3();cam.getWorldDirection(dir);
+  scene.add(m);shots.push({m,dir,life:2});
+}
+function melee(now){
+  if(meleeCd>0)return;meleeCd=.6;
+  for(const e of E)if(e.alive&&e.g.position.distanceTo(P.pos)<4+e.t.s)damageEnemy(e,40,now);
+}
+
+// ---------- input ----------
+const keys={};let yaw=0,pitch=.3,mouseDown=false,clockT=0;
+addEventListener('keydown',e=>{
+  keys[e.code]=true;
+  if(e.code==='KeyF')P.fly=!P.fly;
+  if(e.code==='KeyE')interact();
+  if(e.code==='KeyV')melee(clockT);
+});
+addEventListener('keyup',e=>keys[e.code]=false);
+document.addEventListener('mousemove',e=>{
+  if(document.pointerLockElement){yaw-=e.movementX*.002;pitch=Math.max(-.4,Math.min(1.3,pitch+e.movementY*.002));}
+});
+ren.domElement.addEventListener('click',()=>{if(!document.pointerLockElement)ren.domElement.requestPointerLock();});
+addEventListener('mousedown',e=>{if(e.button===0)mouseDown=true;});
+addEventListener('mouseup',e=>{if(e.button===0)mouseDown=false;});
+
+// ---------- loop ----------
+const clock=new THREE.Clock();
+msg('Click to play. Find Victor Cross (blue) at the ORACLE plaza and press E.',8000);
+function loop(){
+  requestAnimationFrame(loop);
+  const dt=Math.min(clock.getDelta(),.05);clockT+=dt;const now=clockT;
+  blastCd-=dt;meleeCd-=dt;
+  if(mouseDown&&document.pointerLockElement)fire();
+
+  // movement
+  const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+  const r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+  const mv=new THREE.Vector3();
+  if(keys.KeyW)mv.add(f);if(keys.KeyS)mv.sub(f);if(keys.KeyD)mv.add(r);if(keys.KeyA)mv.sub(r);
+  const sp=P.fly?(keys.ShiftLeft?90:40):(keys.ShiftLeft?20:12);
+  if(mv.lengthSq())mv.normalize().multiplyScalar(sp*dt);
+  P.pos.add(mv);
+
+  // building collision / rooftops
+  let gy=0;
+  for(const b of B){
+    const dx=P.pos.x-b.x,dz=P.pos.z-b.z,hx=b.w/2+.5,hz=b.d/2+.5;
+    if(Math.abs(dx)<hx&&Math.abs(dz)<hz){
+      if(P.pos.y>=b.h-.8)gy=Math.max(gy,b.h);
+      else if(hx-Math.abs(dx)<hz-Math.abs(dz))P.pos.x=b.x+Math.sign(dx||1)*hx;
+      else P.pos.z=b.z+Math.sign(dz||1)*hz;
+    }
+  }
+  if(P.fly){
+    P.pos.y+=((keys.Space?25:0)-(keys.KeyC?25:0))*dt;P.vy=0;
+    if(P.pos.y<gy)P.pos.y=gy;
+  }else{
+    P.vy-=40*dt;P.pos.y+=P.vy*dt;
+    if(P.pos.y<=gy){P.pos.y=gy;P.vy=0;if(keys.Space)P.vy=16;}
+  }
+  P.pos.x=Math.max(-300,Math.min(300,P.pos.x));
+  P.pos.z=Math.max(-300,Math.min(300,P.pos.z));
+  P.g.rotation.y=yaw;
+  P.hp=Math.min(100,P.hp+2*dt);
+
+  // camera
+  const d=9;
+  cam.position.set(P.pos.x+Math.sin(yaw)*Math.cos(pitch)*d,P.pos.y+2.5+Math.sin(pitch)*d,P.pos.z+Math.cos(yaw)*Math.cos(pitch)*d);
+  cam.lookAt(P.pos.x,P.pos.y+1.8,P.pos.z);
+
+  // projectiles
+  for(let i=shots.length-1;i>=0;i--){
+    const s=shots[i];s.m.position.addScaledVector(s.dir,90*dt);s.life-=dt;
+    let hit=s.life<=0;
+    if(!hit)for(const e of E){
+      if(!e.alive)continue;
+      const c=e.g.position.clone();c.y+=1.2*e.t.s;
+      if(c.distanceTo(s.m.position)<1.5*e.t.s){damageEnemy(e,25,now);hit=true;break;}
+    }
+    if(hit){scene.remove(s.m);shots.splice(i,1);}
+  }
+
+  // enemy AI + respawn
+  for(const e of E){
+    if(!e.alive){
+      if(now>=e.respawnAt){e.alive=true;e.hp=e.t.hp;e.bar.scale.x=2;e.g.position.copy(e.home);e.g.visible=true;}
+      continue;
+    }
+    e.cd-=dt;
+    const dx=P.pos.x-e.g.position.x,dz=P.pos.z-e.g.position.z,h=Math.hypot(dx,dz);
+    if(h<35&&P.pos.y<8){
+      if(h>2.2*e.t.s){e.g.position.x+=dx/h*e.t.spd*dt;e.g.position.z+=dz/h*e.t.spd*dt;}
+      e.g.rotation.y=Math.atan2(dx,dz);
+      if(h<2.5*e.t.s&&P.pos.y<2.5&&e.cd<=0){hurtPlayer(e.t.dmg);e.cd=1.2;}
+    }else{
+      const hx=e.home.x-e.g.position.x,hz=e.home.z-e.g.position.z,hh=Math.hypot(hx,hz);
+      if(hh>1){e.g.position.x+=hx/hh*4*dt;e.g.position.z+=hz/hh*4*dt;}
+    }
+  }
+
+  hudEl.innerHTML=`<b>Silver Star</b> &nbsp; HP ${Math.ceil(P.hp)} &nbsp; XP ${P.xp} &nbsp; ${P.fly?'FLYING':'GROUND'}<br>`+
+    `Quest: ${active?`${active.title} ${Math.min(prog,active.n)}/${active.n}${prog>=active.n?' (turn in)':''}`:'none (talk to '+Q[qi].giver+')'}<br>`+
+    `<small>WASD move · Shift sprint · Space jump/rise · C descend · F fly · Click blast · V punch · E talk</small>`;
+  ren.render(scene,cam);
+}
+loop();
+</script></body></html>
