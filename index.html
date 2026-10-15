@@ -518,10 +518,12 @@ pf.root.traverse(o=>{if(o.isSkinnedMesh){o.userData.v0=o.visible;STAR.old.push(o
 }
 // ---- heroes: edit names, backstories and blast colours here ----
 const HEROES=[
-  {id:'silver',name:'SILVER STAR',alias:'Donnie Element',blast:0x66ccff,
-   story:['Donnie Element was an ordinary city kid until the night ORACLE’s reactor failed and the light of a dying star poured through him.','Now he carries it as Silver Star — the Ultra who never leaves anyone in the dark.']},
-  {id:'thunder',name:'THUNDER BOLT',alias:'Storm-chaser turned Ultra',blast:0x00f0ff,
-   story:['A former storm-chaser whose experimental armour drinks lightning and turns it into cyan fire.','Thunder Bolt hits fast, hits hard, and always arrives with the weather — the Ultras’ cavalry.']}
+  {id:'silver',name:'SILVER STAR',alias:'Donnie Element \u00b7 Physicist, 30',blast:0x66ccff,
+   powers:'Lightning Speed \u00b7 Regeneration \u00b7 Light Manipulation',
+   story:['Physicist Donnie Element was experimenting with a particle accelerator when a lab accident caused an explosion.','Instead of being injured, he was transformed: he moves at tremendous speed, heals at an advanced rate, and controls the intensity of light. Donnie decided to use his new abilities to become a hero, helping all those in need.']},
+  {id:'thunder',name:'THUNDER BOLT',alias:'Henry Struk \u00b7 Archery Instructor, 23',blast:0x00f0ff,
+   powers:'Resistance to Electricity \u00b7 Energy Arrows \u00b7 Body Armor',
+   story:['Henry Struk was a skilled archer preparing for the Olympics when lightning struck him during practice. He woke able to control and generate lightning.','With a suit he designed, he focuses that power into arrows of electricity fired from a custom bow, and he is unaffected by electricity from any source. Wanting to help as many people as possible, Henry now teaches archery part time and fights crime as Thunder Bolt.']}
 ];
 const COSTS=['silver','thunder','classic'];let COST='silver';
 function setCostume(id,say){
@@ -542,16 +544,17 @@ function setCostume(id,say){
 const SEL={open:false,idx:0,first:true,prev:{},axCd:0,cards:[]};
 {
   const st=document.createElement('style');st.textContent=`
-  #sel{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% 40%,#16304f 0%,#080d18 70%);user-select:none}
-  #sel h1{margin:0;font:800 30px 'Segoe UI',system-ui,sans-serif;letter-spacing:.35em;text-shadow:0 0 18px #4af}
+  #sel{position:fixed;inset:0;z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;background:radial-gradient(ellipse at 50% 40%,#16304f 0%,#080d18 70%);user-select:none}
+  #sel h1{margin:0;font:800 26px 'Segoe UI',system-ui,sans-serif;letter-spacing:.35em;text-shadow:0 0 18px #4af}
   #sel .row{display:flex;gap:28px;align-items:center;justify-content:center;flex-wrap:wrap}
-  #sel .card{width:300px;padding:12px;border-radius:14px;background:#0b1424cc;border:2px solid #2a3b5a;cursor:pointer;transform:scale(.88);opacity:.7;transition:transform .2s,opacity .2s,box-shadow .2s,border-color .2s;text-align:center}
-  #sel .card.on{transform:scale(1.08);opacity:1;border-color:#6cf;box-shadow:0 0 40px #3af8,inset 0 0 30px #17335c}
-  #sel canvas{width:100%;height:auto;aspect-ratio:3/4;display:block;border-radius:10px;background:radial-gradient(ellipse at 50% 70%,#25446e 0%,#0a1020 75%)}
+  #sel .card{width:330px;padding:12px;border-radius:14px;background:#0b1424cc;border:2px solid #2a3b5a;cursor:pointer;transform:scale(.9);opacity:.7;transition:transform .2s,opacity .2s,box-shadow .2s,border-color .2s;text-align:center}
+  #sel .card.on{transform:scale(1);opacity:1;border-color:#6cf;box-shadow:0 0 40px #3af8,inset 0 0 30px #17335c}
+  #sel canvas{width:100%;height:auto;aspect-ratio:1/1.02;display:block;object-fit:cover;border-radius:10px;background:radial-gradient(ellipse at 50% 70%,#25446e 0%,#0a1020 75%)}
   #sel .nm{font:800 22px 'Segoe UI',system-ui,sans-serif;letter-spacing:.18em;margin-top:8px}
   #sel .al{font-size:12px;letter-spacing:.12em;color:#8cf;margin:2px 0 8px;text-transform:uppercase}
-  #sel .bs{font-size:13px;line-height:1.4;color:#cfd9ee;text-align:left}
+  #sel .bs{font-size:12.5px;line-height:1.38;color:#cfd9ee;text-align:left}
   #sel .bs p{margin:0 0 6px}
+  #sel .pw{margin-top:6px;padding-top:6px;border-top:1px solid #2a3b5a;font-size:11px;letter-spacing:.06em;color:#8cf;text-transform:uppercase}
   #sel .hint{font-size:13px;color:#9ab;letter-spacing:.08em}`;
   document.head.appendChild(st);
   const root=document.createElement('div');root.id='sel';
@@ -568,7 +571,7 @@ const SEL={open:false,idx:0,first:true,prev:{},axCd:0,cards:[]};
   for(const h of HEROES){
     const src=h.id==='silver'?gStar:gTB;
     const card=document.createElement('div');card.className='card';
-    card.innerHTML=`<canvas width="300" height="400"></canvas><div class="nm">${h.name}</div><div class="al">${h.alias}</div><div class="bs">${h.story.map(t=>'<p>'+t+'</p>').join('')}</div>`;
+    card.innerHTML=`<canvas width="300" height="400"></canvas><div class="nm">${h.name}</div><div class="al">${h.alias}</div><div class="bs">${h.story.map(t=>'<p>'+t+'</p>').join('')}</div><div class="pw">${h.powers}</div>`;
     row.appendChild(card);
     const c={h,card,cv:card.querySelector('canvas'),obj:null,mixer:null,ang:0};
     c.ctx=c.cv.getContext('2d');
