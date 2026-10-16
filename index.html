@@ -519,17 +519,17 @@ pf.root.traverse(o=>{if(o.isSkinnedMesh){o.userData.v0=o.visible;STAR.old.push(o
 // ---- heroes: edit names, backstories and blast colours here ----
 const HEROES=[
   {id:'silver',name:'SILVER STAR',alias:'Donnie Element \u00b7 Physicist, 30',blast:0x66ccff,
-   powers:'Lightning Speed \u00b7 Regeneration \u00b7 Light Manipulation',
+   powers:'Lightning Speed [Q] \u00b7 Regeneration \u00b7 Light Manipulation [hold R]',
    story:['Physicist Donnie Element was experimenting with a particle accelerator when a lab accident caused an explosion.','Instead of being injured, he was transformed: he moves at tremendous speed, heals at an advanced rate, and controls the intensity of light. Donnie decided to use his new abilities to become a hero, helping all those in need.']},
   {id:'thunder',name:'THUNDER BOLT',alias:'Henry Struk \u00b7 Archery Instructor, 23',blast:0x00f0ff,
-   powers:'Resistance to Electricity \u00b7 Energy Arrows \u00b7 Body Armor',
+   powers:'Energy Arrows \u00b7 Charged Arrow [Q] \u00b7 Body Armor \u00b7 Resists Electricity',
    story:['Henry Struk was a skilled archer preparing for the Olympics when lightning struck him during practice. He woke able to control and generate lightning.','With a suit he designed, he focuses that power into arrows of electricity fired from a custom bow, and he is unaffected by electricity from any source. Wanting to help as many people as possible, Henry now teaches archery part time and fights crime as Thunder Bolt.']}
 ];
 const COSTS=['silver','thunder','classic'];let COST='silver';
 function setCostume(id,say){
   const mesh=id==='silver'?STAR.mesh:id==='thunder'?STAR.tb:null;
   if(id!=='classic'&&!mesh)id='classic';
-  COST=id;STAR.on=id!=='classic';
+  COST=id;STAR.on=id!=='classic';if(SP){SP.on=false;SP.lit=false;SP.flare=0;}if(SP)refreshPw();
   if(STAR.mesh)STAR.mesh.visible=id==='silver';
   if(STAR.tb)STAR.tb.visible=id==='thunder';
   for(const o of STAR.old)o.visible=id==='classic'?o.userData.v0:false;
@@ -893,7 +893,7 @@ function damageEnemy(e,amt,now){
   }
 }
 function hurtPlayer(d){
-  P.hp-=d;
+  P.hp-=d*(isThunder()?.75:1); // Body Armor
   if(P.anim&&!P.procOn&&P.hp>0)P.anim.once('Hit_Chest',{dur:.3});
   if(P.hp<=0){P.hp=100;P.pos.set(0,0,10);msg('ORACLE extracted you. Victor Cross: "Try not to die again."');}
 }
@@ -902,15 +902,39 @@ function hurtPlayer(d){
 const shots=[];
 const blastGeo=new THREE.SphereGeometry(.4),blastMat=new THREE.MeshBasicMaterial({color:0x66ccff});
 let blastCd=0,meleeCd=0;
-function fire(){
-  if(blastCd>0)return;blastCd=.3;
-  const hb=HEROES.find(x=>x.id===COST);blastMat.color.setHex(hb?hb.blast:0x66ccff);
-  const m=new THREE.Mesh(blastGeo,blastMat);
-  m.position.copy(P.pos);m.position.y+=1.4;
-  const dir=new THREE.Vector3();cam.getWorldDirection(dir);
-  scene.add(m);shots.push({m,dir,life:2});
+var SP={on:false,S:3,flare:0,lit:false,flareT:0,flareCd:0,arrowCd:0,tr:0,noSrcT:0};
+function isThunder(){return COST==='thunder';}
+function hs(){return SP.on&&!isThunder()?SP.S:1;}   // Silver Star's Super Speed: everything he does runs this much faster
+const arrowGeo=new THREE.CylinderGeometry(.035,.035,1.7,6).rotateX(Math.PI/2),tipGeo=new THREE.ConeGeometry(.12,.4,8).rotateX(-Math.PI/2).translate(0,0,.95);
+const arrowMat=new THREE.MeshBasicMaterial({color:0x00f0ff}),fxList=[];
+function makeArrow(big){
+  const g=new THREE.Group();g.add(new THREE.Mesh(arrowGeo,arrowMat),new THREE.Mesh(tipGeo,arrowMat));
+  if(big)g.scale.setScalar(2.4);
+  const dir=new THREE.Vector3();cam.getWorldDirection(dir);dir.y=Math.max(dir.y,-.02);dir.normalize(); // arrows fly level rather than into the pavement
+  g.position.copy(P.pos);g.position.y+=1.4;g.position.addScaledVector(dir,.8);g.lookAt(g.position.clone().add(dir));
+  scene.add(g);shots.push({m:g,dir,life:big?2.2:1.6,arrow:true,big,speed:big?95:150,dmg:big?0:45,pierce:big?1:2,hit:big?null:new Set()});
   if(audio)audio.blast(P.pos);if(civ)civ.alarm(P.pos,30);
   if(P.anim&&!P.procOn&&P.pu<0)P.anim.once('Spell_Simple_Shoot',{dur:.3});
+}
+function explode(pos){
+  const R9=9;
+  for(const e of E){if(!e.alive)continue;const c=e.g.position.clone();c.y+=.9*e.t.s;const d=c.distanceTo(pos);if(d<R9)damageEnemy(e,Math.round(80*(1-.5*d/R9)),clockT);}
+  const m=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:0x66f6ff,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false}));
+  m.position.copy(pos);scene.add(m);fxList.push({m,t:0,dur:.45,r:R9});
+  if(audio)audio.blast(pos);if(civ)civ.alarm(pos,60);
+}
+function fire(){
+  if(!isThunder()){melee(clockT);return;}   // Silver Star has no ranged attack: clicking throws punches
+  if(blastCd>0)return;blastCd=.5;
+  makeArrow(false);
+}
+function power(){ // Q / R3: Silver Star toggles Super Speed, Thunder Bolt looses a Charged Arrow
+  if(SEL.open||DLG.open)return;
+  if(isThunder()){
+    if(SP.arrowCd>0){msg('Charged Arrow ready in '+Math.ceil(SP.arrowCd)+'s',1200);return;}
+    SP.arrowCd=8;makeArrow(true);
+  }else{SP.on=!SP.on;msg(SP.on?'SUPER SPEED ON':'Super speed off',1500);}
+  refreshPw();
 }
 const PUNCH_DUR=.5, COMBO=['Punch_Jab','Punch_Cross','Melee_Hook'];
 function melee(now){
@@ -930,7 +954,8 @@ addEventListener('keydown',e=>{
   if(DLG.open){DLG.key(e.code);e.preventDefault();return;}
   keys[e.code]=true;
   if(e.code==='KeyK'&&!e.repeat)setCostume(COSTS[(COSTS.indexOf(COST)+1)%COSTS.length],true);
-  if(e.code==='KeyF'&&!e.shiftKey)P.fly=!P.fly;
+  if(e.code==='KeyF'&&!e.shiftKey)msg('No flight power',1500);
+  if(e.code==='KeyQ'&&!e.repeat)power();
   if(e.code==='KeyE')interact();
   if(e.code==='KeyV')melee(clockT);
 });
@@ -952,7 +977,7 @@ addEventListener('gamepaddisconnected',()=>{PAD.on=false;PAD.mx=PAD.my=PAD.rx=PA
 function pollPad(){
   const pads=(navigator.getGamepads&&navigator.getGamepads())||[];
   const g=[...pads].find(p=>p&&p.connected);
-  if(!g){PAD.mx=PAD.my=PAD.rx=PAD.ry=0;PAD.jump=PAD.down=PAD.sprint=PAD.fire=false;return;}
+  if(!g){PAD.mx=PAD.my=PAD.rx=PAD.ry=0;PAD.jump=PAD.down=PAD.sprint=PAD.fire=PAD.light=false;PAD.q=false;return;}
   PAD.on=true;
   const b=i=>!!(g.buttons[i]&&g.buttons[i].pressed);
   PAD.raw={b:Array.from(g.buttons,x=>!!x.pressed),ax:Array.from(g.axes),id:g.id||''}; // for the on-screen controller diagram
@@ -961,7 +986,8 @@ function pollPad(){
   const now=[b(2),b(3),b(4)];
   if(now[0]&&!PAD.prev[0])melee(clockT);   // X: punch
   if(now[1]&&!PAD.prev[1])interact();      // Y: talk
-  if(now[2]&&!PAD.prev[2])P.fly=!P.fly;    // LB: fly on/off
+  if(now[2]&&!PAD.prev[2])msg('No flight power',1500);   // LB: (flight is only for heroes with that power)
+  PAD.light=b(8);{const q=b(11);if(q&&!PAD.q)power();PAD.q=q;}   // Back: Light Manipulation (hold) · R3: power (Q)
   PAD.prev=now;
 }
 
@@ -1252,11 +1278,100 @@ const ui=(()=>{
   return {update,state:S};
 })();
 
+// ---------- hero powers: Super Speed visuals, Light Manipulation, power buttons ----------
+{
+  const st=document.createElement('style');st.textContent=`
+  #pw{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:6;display:flex;gap:8px;font-family:'Segoe UI',system-ui,sans-serif}
+  #pw .pb{padding:9px 14px;border-radius:10px;background:#0b1424cc;border:2px solid #2a3b5a;color:#cfe;font:700 13px 'Segoe UI',system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;user-select:none;min-width:130px;text-align:center}
+  #pw .pb.on{border-color:#6cf;box-shadow:0 0 14px #4af;color:#fff;background:#12305a}
+  #pw .pb.cd{opacity:.55}
+  #spd{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;transition:opacity .25s;background:repeating-conic-gradient(from 0deg,rgba(190,225,255,0) 0 3.2deg,rgba(190,225,255,.35) 3.2deg 4deg);-webkit-mask-image:radial-gradient(circle,transparent 42%,#000 88%);mask-image:radial-gradient(circle,transparent 42%,#000 88%)}
+  #flash{position:fixed;inset:0;z-index:4;pointer-events:none;opacity:0;background:radial-gradient(circle,rgba(255,255,255,.0) 20%,rgba(255,255,240,.85) 100%)}`;
+  document.head.appendChild(st);
+  const spd=document.createElement('div');spd.id='spd';document.body.appendChild(spd);
+  const fl=document.createElement('div');fl.id='flash';document.body.appendChild(fl);
+  const pw=document.createElement('div');pw.id='pw';document.body.appendChild(pw);
+  for(const ev of ['mousedown','mouseup','click','pointerdown'])pw.addEventListener(ev,e=>e.stopPropagation());
+  SP.pw=pw;SP.spd=spd;SP.fl=fl;SP.held=false;
+  window.addEventListener('mouseup',()=>{SP.held=false;});
+  // glow sprites
+  const cv=document.createElement('canvas');cv.width=cv.height=64;const cx=cv.getContext('2d'),gr=cx.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.3,'rgba(255,250,220,.9)');gr.addColorStop(.6,'rgba(255,245,210,.35)');gr.addColorStop(1,'rgba(255,240,200,0)');cx.fillStyle=gr;cx.fillRect(0,0,64,64);
+  const tex=new THREE.CanvasTexture(cv);tex.colorSpace=THREE.SRGBColorSpace;
+  SP.sprites=[];for(let i=0;i<60;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:0}));sp.visible=false;scene.add(sp);SP.sprites.push(sp);}
+  const tmat=()=>new THREE.SpriteMaterial({map:tex,color:0x9fd8ff,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:0});
+  SP.trail=[];for(let i=0;i<24;i++){const sp=new THREE.Sprite(tmat());sp.visible=false;scene.add(sp);SP.trail.push({sp,life:0});}
+}
+function refreshPw(){
+  const pw=SP.pw;if(!pw)return;
+  pw.innerHTML='';
+  const mk=(id,html,down,up)=>{const b=document.createElement('div');b.className='pb';b.id=id;b.innerHTML=html;b.addEventListener('pointerdown',e=>{e.preventDefault();down&&down();});if(up){b.addEventListener('pointerup',up);b.addEventListener('pointerleave',up);}pw.appendChild(b);return b;};
+  if(isThunder())mk('pbq','\u{1F3F9} Charged Arrow [Q]',()=>power());
+  else{mk('pbq','⚡ Super Speed [Q]',()=>power());mk('pbr','\u{1F4A1} Light [hold R]',()=>{SP.held=true;},()=>{SP.held=false;});}
+}
+function powersTick(dt){
+  const thunder=isThunder();
+  // --- Light Manipulation: Silver Star brightens EXISTING light sources (signals, headlights); he makes none of his own ---
+  const want=!thunder&&(keys.KeyR||PAD.light||SP.held);
+  let src=[];
+  if(want||SP.flare>.01)src=traffic.lightSources?traffic.lightSources(P.pos.x,P.pos.z,40):[];
+  const was=SP.lit;
+  if(want&&SP.flareCd<=0&&SP.flareT<6){
+    if(src.length){SP.lit=true;SP.flareT+=dt;}
+    else{SP.lit=false;SP.noSrcT-=dt;if(SP.noSrcT<=0){msg('No light sources nearby',1500);SP.noSrcT=3;}}
+  }else SP.lit=false;
+  if(was&&!SP.lit){SP.flareCd=6;SP.flareT=0;}
+  SP.flare+=((SP.lit?1:0)-SP.flare)*Math.min(1,dt*6);
+  if(SP.flare<.01)SP.flare=0;
+  // glow halos on the nearest sources
+  const sprites=SP.sprites;
+  if(SP.flare>0){
+    src.sort((a,b)=>(a[0]-P.pos.x)**2+(a[2]-P.pos.z)**2-((b[0]-P.pos.x)**2+(b[2]-P.pos.z)**2));
+    for(let i=0;i<sprites.length;i++){
+      const sp=sprites[i],p=src[i];
+      if(!p){sp.visible=false;continue;}
+      sp.visible=true;sp.position.set(p[0],p[1],p[2]);{const dx=cam.position.x-p[0],dy=cam.position.y-p[1],dz=cam.position.z-p[2],dl=Math.hypot(dx,dy,dz)||1,k2=Math.min(1.4,dl*.5)/dl;sp.position.x+=dx*k2;sp.position.y+=dy*k2;sp.position.z+=dz*k2;} // nudge toward the camera so the lamp housing doesn't hide the glow
+      const k=p[3]==='sig'?1:p[3]==='head'?1.3:.8;
+      sp.scale.setScalar((5+16*SP.flare)*k);sp.material.opacity=SP.flare;
+      sp.material.color.setHex(p[3]==='tail'?0xff6a50:p[3]==='head'?0xfff4c8:0xffffff);
+    }
+  }else for(const sp of sprites)sp.visible=false;
+  // dazzle people standing near a flared light
+  if(SP.lit){
+    const near=(x,z)=>{for(const p of src){const dx=p[0]-x,dz=p[2]-z;if(dx*dx+dz*dz<625)return true;}return false;};
+    for(const e of E)if(e.alive&&Math.hypot(e.g.position.x-P.pos.x,e.g.position.z-P.pos.z)<40&&near(e.g.position.x,e.g.position.z))e.dz=3;
+    if(traffic.police)for(const o of traffic.police.officers)if(o.alive&&near(o.g.position.x,o.g.position.z))o.cd=Math.max(o.cd,1.5);
+    if(civ&&civ.list)for(const c of civ.list)if(c.g.visible&&near(c.g.position.x,c.g.position.z))c.wait=Math.max(c.wait||0,2);
+  }
+  let nlit=0;for(const p of src)if((p[0]-P.pos.x)**2+(p[2]-P.pos.z)**2<900)nlit++;
+  SP.fl.style.opacity=(SP.flare*Math.min(.6,nlit/5*.6)).toFixed(3);
+  // --- Super Speed trail + speed lines ---
+  const fast=SP.on&&!thunder;
+  SP.spd.style.opacity=(fast&&P.moving)?.55:0;
+  SP.tr-=dt;
+  if(fast&&P.moving&&SP.tr<=0){
+    SP.tr=.025;const t=SP.trail.find(x=>x.life<=0);
+    if(t){t.life=.4;t.sp.visible=true;t.sp.position.set(P.pos.x+(Math.random()-.5)*.5,P.pos.y+.4+Math.random()*1.3,P.pos.z+(Math.random()-.5)*.5);}
+  }
+  for(const t of SP.trail){if(t.life<=0)continue;t.life-=dt;if(t.life<=0){t.sp.visible=false;continue;}t.sp.material.opacity=Math.min(1,t.life/.4)*.9;t.sp.scale.setScalar(.6+(.4-t.life)*3);}
+  // --- power buttons: show state ---
+  SP.btT=(SP.btT||0)-dt;
+  if(SP.btT<=0&&SP.pw){
+    SP.btT=.15;
+    const q=document.getElementById('pbq'),r=document.getElementById('pbr');
+    if(q){
+      if(thunder){const cd=SP.arrowCd>0;q.classList.toggle('cd',cd);q.textContent='\u{1F3F9} Charged Arrow [Q]'+(cd?' · '+Math.ceil(SP.arrowCd)+'s':'');}
+      else{q.classList.toggle('on',SP.on);q.textContent='⚡ Super Speed [Q] · '+(SP.on?'ON':'off');}
+    }
+    if(r){const cd=SP.flareCd>0;r.classList.toggle('on',SP.lit);r.classList.toggle('cd',cd);r.textContent='\u{1F4A1} Light [hold R]'+(cd?' · '+Math.ceil(SP.flareCd)+'s':'');}
+  }
+}
+
 // ---------- loop ----------
 const clock=new THREE.Clock();
 document.getElementById('load').remove();
-SEL.show();
-window.__game={P,E,B,cam,scene,traffic,get star(){return STAR;},get sel(){return SEL;},setCostume,get cost(){return COST;},get civ(){return civ;},get audio(){return audio;},damageEnemy,OB,ejectXZ,sinfo:_sinfo,now:()=>clockT,setView:(y,p)=>{yaw=y;pitch=p;},dbg:{}}; // debug hook
+refreshPw();SEL.show();
+window.__game={P,E,B,cam,scene,traffic,get star(){return STAR;},get sel(){return SEL;},SP,power,setCostume,get cost(){return COST;},get civ(){return civ;},get audio(){return audio;},damageEnemy,OB,ejectXZ,sinfo:_sinfo,now:()=>clockT,setView:(y,p)=>{yaw=y;pitch=p;},dbg:{}}; // debug hook
 function loop(){
   requestAnimationFrame(loop);
   const n=window.__game.dbg.sub||1; // debug: run several simulation steps per rendered frame
@@ -1268,7 +1383,8 @@ function loop(){
 }
 function tick(dt){
   clockT+=dt;const now=clockT;
-  blastCd-=dt;meleeCd-=dt;
+  P.fly=false;const HS=hs();
+  blastCd-=dt*HS;meleeCd-=dt*HS;SP.arrowCd-=dt;SP.flareCd-=dt;
   pollPad();
   const sprint=keys.ShiftLeft||PAD.sprint, jumpHeld=keys.Space||PAD.jump, downHeld=keys.KeyC||PAD.down;
   if(PAD.rx||PAD.ry){yaw-=PAD.rx*dt*2.6;pitch=Math.max(-.4,Math.min(1.3,pitch+PAD.ry*dt*1.8));}
@@ -1279,7 +1395,7 @@ function tick(dt){
   const r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
   const mv=new THREE.Vector3();
   if(keys.KeyW)mv.add(f);if(keys.KeyS)mv.sub(f);if(keys.KeyD)mv.add(r);if(keys.KeyA)mv.sub(r);
-  const sp=P.fly?(sprint?90:40):(sprint?20:12);
+  const sp=(sprint?20:12)*HS;
   let amt=1;
   if(!mv.lengthSq()&&(PAD.mx||PAD.my)){ // analog stick: direction relative to camera, speed scales with tilt
     mv.addScaledVector(f,-PAD.my).addScaledVector(r,PAD.mx);amt=Math.min(1,mv.length());
@@ -1315,7 +1431,7 @@ function tick(dt){
   P.pos.z=Math.max(-LIM,Math.min(LIM,P.pos.z));
   // model faces +Z, game forward is -Z at yaw 0
   P.g.rotation.y=yaw+Math.PI+((window.__game&&window.__game.dbg.face)||0);
-  P.hp=Math.min(100,P.hp+2*dt);
+  P.hp=Math.min(100,P.hp+(isThunder()?2:6)*dt); // Silver Star regenerates 3x faster
   // procedural pose: fly = superhero lean, walk = bob, punch = lunge
   const air=P.pos.y>gy+.2;
   P.t+=dt*(P.moving?(sprint?14:9):2);
@@ -1323,7 +1439,7 @@ function tick(dt){
   const D=window.__game&&window.__game.dbg;
   if(D&&D.u!==undefined){P.pu=D.u;P.pendingHit=false;if(D.hand)P.hand=D.hand;}
   else if(P.pu>=0){
-    P.pu+=dt/PUNCH_DUR;
+    P.pu+=dt*HS/PUNCH_DUR;
     if(P.pendingHit&&P.pu>=.4){P.pendingHit=false;punchLands(now);}
     if(P.pu>1)P.pu=-1;
   }
@@ -1343,8 +1459,9 @@ function tick(dt){
     if(air)P.anim.play('Jump_Loop',{fade:.1});
     else if(P.moving)P.anim.play(sprint?'Sprint_Loop':'Jog_Fwd_Loop',{speed:sprint?1.8:1.5});
     else P.anim.play('Idle_Loop');
-    P.anim.update(dt);
+    P.anim.update(dt*((P.moving||P.pu>=0||air)?HS:1));
   }
+  powersTick(dt);
 
   // camera
   const d=(window.__game.dbg.camD)||9,cy=(window.__game.dbg.camD)?1.5:2.5;
@@ -1353,15 +1470,22 @@ function tick(dt){
 
   // projectiles
   for(let i=shots.length-1;i>=0;i--){
-    const s=shots[i];s.m.position.addScaledVector(s.dir,90*dt);s.life-=dt;
-    let hit=s.life<=0;
+    const s=shots[i];s.m.position.addScaledVector(s.dir,(s.speed||90)*dt);s.life-=dt;
+    let hit=s.life<=0;const p=s.m.position;
+    if(s.arrow&&!hit&&(p.y<0||B.some(q=>Math.abs(p.x-q.x)<q.w/2&&Math.abs(p.z-q.z)<q.d/2&&p.y<q.h)))hit=true;
     if(!hit)for(const e of E){
-      if(!e.alive)continue;
+      if(!e.alive||(s.hit&&s.hit.has(e)))continue;
       const c=e.g.position.clone();c.y+=.9*e.t.s;
-      if(c.distanceTo(s.m.position)<1.2*e.t.s+.4){damageEnemy(e,25,now);hit=true;break;}
+      if(c.distanceTo(p)<(1.2*e.t.s+.4)*(s.big?1.4:1)){
+        if(s.big){hit=true;break;}
+        damageEnemy(e,s.dmg||25,now);
+        if(s.hit){s.hit.add(e);if(--s.pierce<=0)hit=true;}else hit=true;
+        if(hit)break;
+      }
     }
-    if(hit){scene.remove(s.m);shots.splice(i,1);}
+    if(hit){if(s.big)explode(p);scene.remove(s.m);shots.splice(i,1);}
   }
+  for(let i=fxList.length-1;i>=0;i--){const f=fxList[i];f.t+=dt;const k=f.t/f.dur;f.m.scale.setScalar(.5+f.r*k);f.m.material.opacity=.8*(1-k);if(k>=1){scene.remove(f.m);fxList.splice(i,1);}}
 
   traffic.update(dt,now);
   if(civ)civ.update(dt);
@@ -1386,6 +1510,7 @@ function tick(dt){
       continue;
     }
     e.cd-=dt;
+    if(e.dz>0){e.dz-=dt;e.cd=Math.max(e.cd,.6);if(A){if(e.atk<0)A.play('Idle',{fade:.2});A.update(dt);}ejectXZ(e.g.position,.55*e.t.s);continue;} // dazzled by Light Manipulation
     // target: the hero, unless a police officer is closer
     let tg={x:P.pos.x,y:P.pos.y,z:P.pos.z,hero:true};
     {let bd=Math.hypot(tg.x-e.g.position.x,tg.z-e.g.position.z);

@@ -98,19 +98,19 @@ export function createTraffic(ctx){
     const heads=new THREE.InstancedMesh(new THREE.BoxGeometry(.52,1.35,.42),new THREE.MeshStandardMaterial({color:0x17191c}),NI*4);
     const lamps=new THREE.InstancedMesh(new THREE.SphereGeometry(.17,8,6),new THREE.MeshBasicMaterial({color:0xffffff}),NI*12);
     for(const m of [poles,heads,lamps])m.frustumCulled=false;
-    let n=0;
+    let n=0;const pts=[];
     for(let i=0;i<N;i++)for(let j=0;j<N;j++)for(let k=0;k<4;k++,n++){
       const cx=C(i),cz=C(j),[ax,sg]=APP[k],d=8.4;
       let px,pz,fx,fz; // pole at the driver's near-right corner, lamp face towards the approaching driver
       if(ax==='z'&&sg>0){px=cx-d;pz=cz-d;fx=0;fz=-1;} else if(ax==='z'){px=cx+d;pz=cz+d;fx=0;fz=1;}
       else if(sg>0){px=cx-d;pz=cz+d;fx=-1;fz=0;} else {px=cx+d;pz=cz-d;fx=1;fz=0;}
-      solids.push({x:px,z:pz,r:.35,h:5});
+      solids.push({x:px,z:pz,r:.35,h:5});pts.push([px+fx*.4,4.3,pz+fz*.4,'sig']);
       dm.rotation.set(0,0,0);dm.position.set(px,2.5,pz);dm.updateMatrix();poles.setMatrixAt(n,dm.matrix);
       dm.rotation.set(0,Math.atan2(fx,fz),0);dm.position.set(px+fx*.15,4.3,pz+fz*.15);dm.updateMatrix();heads.setMatrixAt(n,dm.matrix);
       for(let c=0;c<3;c++){dm.position.set(px+fx*.4,4.7-c*.4,pz+fz*.4);dm.rotation.set(0,0,0);dm.updateMatrix();lamps.setMatrixAt(n*3+c,dm.matrix);lamps.setColorAt(n*3+c,new THREE.Color(0x202020));}
     }
     scene.add(poles,heads,lamps);
-    return {lamps,last:new Int8Array(NI*4).fill(-1)};
+    return {lamps,last:new Int8Array(NI*4).fill(-1),pts};
   })();
   const LAMP_ON=[new THREE.Color(0x30ff60),new THREE.Color(0xffc21a),new THREE.Color(0xff2a2a)],LAMP_OFF=new THREE.Color(0x242424);
   const tmpC=new THREE.Color();
@@ -123,6 +123,22 @@ export function createTraffic(ctx){
       lights.lamps.setColorAt(n*3,s===2?LAMP_ON[2]:LAMP_OFF);lights.lamps.setColorAt(n*3+1,s===1?LAMP_ON[1]:LAMP_OFF);lights.lamps.setColorAt(n*3+2,s===0?LAMP_ON[0]:LAMP_OFF);
     }
     if(dirty)lights.lamps.instanceColor.needsUpdate=true;
+  }
+
+  // every light source (signals, headlights, tail lights) within `range` of x,z: [x,y,z,kind] (used by Silver Star's Light Manipulation)
+  function lightSources(x,z,range){
+    const out=[],r2=range*range;
+    for(const p of lights.pts){const dx=p[0]-x,dz=p[2]-z;if(dx*dx+dz*dz<r2)out.push(p);}
+    for(const v of vehicles){
+      if(!v.g||!v.g.visible)continue;
+      const dx=v.x-x,dz=v.z-z,rr=range+8;if(dx*dx+dz*dz>rr*rr)continue;
+      const L=v.len/2,W=v.wid*.3,sx=-v.hz,sz=v.hx;
+      for(const s of [-1,1]){
+        out.push([v.x+v.hx*L+sx*W*s,.75,v.z+v.hz*L+sz*W*s,'head']);
+        out.push([v.x-v.hx*L+sx*W*s,.8,v.z-v.hz*L+sz*W*s,'tail']);
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------- lane geometry helpers
@@ -559,6 +575,6 @@ export function createTraffic(ctx){
     if(spawnT<=0&&vehicles.filter(v=>!v.keep).length<TARGET){spawnT=.25;trySpawn();}
     updatePolice(dt,now);
   }
-  return {ready,update,alert,collidePlayer,hitOfficer,noteDefeat,vehicles,police,models,sig,solids,get T(){return T;},addVehicle,DEFS,
+  return {ready,update,alert,lightSources,collidePlayer,hitOfficer,noteDefeat,vehicles,police,models,sig,solids,get T(){return T;},addVehicle,DEFS,
     get stats(){return {down:police.down,arrests:police.arrests,active:!!police.resp,cars:vehicles.length};}};
 }
