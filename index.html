@@ -514,7 +514,9 @@ pf.root.traverse(o=>{if(o.isSkinnedMesh){o.userData.v0=o.visible;STAR.old.push(o
 { // Thunder Bolt: another skinned mesh on the same skeleton
   let sm=null;if(gTB)gTB.scene.traverse(o=>{if(o.isSkinnedMesh&&!sm)sm=o;});
   const body=STAR.old.find(o=>/superhero/i.test(o.material&&o.material.name||''))||STAR.old[STAR.old.length-1];
-  if(sm&&body){const mt=sm.material.clone();mt.metalness=.55;mt.roughness=1;const m=new THREE.SkinnedMesh(sm.geometry,mt);m.name='Thunder_Bolt';m.frustumCulled=false;body.parent.add(m);m.bind(body.skeleton,body.bindMatrix);STAR.tb=m;}
+  if(sm&&body){const mt=sm.material.clone();mt.metalness=.55;mt.roughness=1;mt.userData.sw={value:new THREE.Vector2()}; // cape sway: the model carries a per-vertex 'cape' weight (0 at the shoulders, 1 at the hem)
+    mt.onBeforeCompile=sh=>{sh.uniforms.uSw=mt.userData.sw;sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float _cape;\nuniform vec2 uSw;').replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.x+=uSw.x*_cape;transformed.z+=uSw.y*_cape;');};
+    const m=new THREE.SkinnedMesh(sm.geometry,mt);m.name='Thunder_Bolt';m.frustumCulled=false;body.parent.add(m);m.bind(body.skeleton,body.bindMatrix);STAR.tb=m;}
 }
 // ---- heroes: edit names, backstories and blast colours here ----
 const HEROES=[
@@ -902,19 +904,18 @@ function hurtPlayer(d){
 const shots=[];
 const blastGeo=new THREE.SphereGeometry(.4),blastMat=new THREE.MeshBasicMaterial({color:0x66ccff});
 let blastCd=0,meleeCd=0;
-var SP={on:false,S:3,flare:0,lit:false,flareT:0,flareCd:0,arrowCd:0,tr:0,noSrcT:0};
+var SP={draw:0,charge:0,bowW:0,hold:0,wasAim:false,on:false,S:3,flare:0,lit:false,flareT:0,flareCd:0,arrowCd:0,tr:0,noSrcT:0};
 function isThunder(){return COST==='thunder';}
 function hs(){return SP.on&&!isThunder()?SP.S:1;}   // Silver Star's Super Speed: everything he does runs this much faster
 const arrowGeo=new THREE.CylinderGeometry(.035,.035,1.7,6).rotateX(Math.PI/2),tipGeo=new THREE.ConeGeometry(.12,.4,8).rotateX(-Math.PI/2).translate(0,0,.95);
 const arrowMat=new THREE.MeshBasicMaterial({color:0x00f0ff}),fxList=[];
-function makeArrow(big){
+function makeArrow(big,str=1,from){
   const g=new THREE.Group();g.add(new THREE.Mesh(arrowGeo,arrowMat),new THREE.Mesh(tipGeo,arrowMat));
   if(big)g.scale.setScalar(2.4);
   const dir=new THREE.Vector3();cam.getWorldDirection(dir);dir.y=Math.max(dir.y,-.02);dir.normalize(); // arrows fly level rather than into the pavement
-  g.position.copy(P.pos);g.position.y+=1.4;g.position.addScaledVector(dir,.8);g.lookAt(g.position.clone().add(dir));
-  scene.add(g);shots.push({m:g,dir,life:big?2.2:1.6,arrow:true,big,speed:big?95:150,dmg:big?0:45,pierce:big?1:2,hit:big?null:new Set()});
-  if(audio)audio.blast(P.pos);if(civ)civ.alarm(P.pos,30);
-  if(P.anim&&!P.procOn&&P.pu<0)P.anim.once('Spell_Simple_Shoot',{dur:.3});
+  if(from)g.position.copy(from);else{g.position.copy(P.pos);g.position.y+=1.4;}g.position.addScaledVector(dir,.8);g.lookAt(g.position.clone().add(dir));
+  scene.add(g);shots.push({m:g,dir,life:big?2.2:1.6,arrow:true,big,speed:big?95:90+70*str,dmg:big?0:Math.round(22+28*str),pierce:big?1:(str>.7?2:1),hit:big?null:new Set()});
+  if(audio){audio.bowRelease(P.pos,big?1:str);audio.blast(P.pos);}if(civ)civ.alarm(P.pos,30);
 }
 function explode(pos){
   const R9=9;
@@ -925,14 +926,13 @@ function explode(pos){
 }
 function fire(){
   if(!isThunder()){melee(clockT);return;}   // Silver Star has no ranged attack: clicking throws punches
-  if(blastCd>0)return;blastCd=.5;
-  makeArrow(false);
+  // Thunder Bolt: handled by the bow draw/release in bowTick()
 }
 function power(){ // Q / R3: Silver Star toggles Super Speed, Thunder Bolt looses a Charged Arrow
   if(SEL.open||DLG.open)return;
   if(isThunder()){
     if(SP.arrowCd>0){msg('Charged Arrow ready in '+Math.ceil(SP.arrowCd)+'s',1200);return;}
-    SP.arrowCd=8;makeArrow(true);
+    if(SP.charge>0)return;SP.arrowCd=8;SP.charge=.55;SP.draw=0;if(audio)audio.bowDraw(P.pos,.55);
   }else{SP.on=!SP.on;msg(SP.on?'SUPER SPEED ON':'Super speed off',1500);}
   refreshPw();
 }
@@ -1311,6 +1311,12 @@ function refreshPw(){
 }
 function powersTick(dt){
   const thunder=isThunder();
+  bowTick(dt,thunder);
+  { // Thunder Bolt's cape trails behind him when he moves and sways a little when he stands
+    const sw=STAR.tb&&STAR.tb.material.userData.sw;
+    if(sw){const v=P.moving?((keys.ShiftLeft||PAD.sprint)?1:.6):0;SP.cv=(SP.cv||0)+(v-(SP.cv||0))*Math.min(1,dt*4);
+      sw.value.set(.03*Math.sin(clockT*3.1)*(.4+SP.cv),-.16*SP.cv+.02*Math.sin(clockT*2.3));}
+  }
   // --- Light Manipulation: Silver Star brightens EXISTING light sources (signals, headlights); he makes none of his own ---
   const want=!thunder&&(keys.KeyR||PAD.light||SP.held);
   let src=[];
@@ -1365,6 +1371,91 @@ function powersTick(dt){
     }
     if(r){const cd=SP.flareCd>0;r.classList.toggle('on',SP.lit);r.classList.toggle('cd',cd);r.textContent='\u{1F4A1} Light [hold R]'+(cd?' · '+Math.ceil(SP.flareCd)+'s':'');}
   }
+}
+
+// ---------- Thunder Bolt's energy bow: drawn with the arms (IK), glowing bow + string + crackle ----------
+var BOW=null;
+function bowBuild(){
+  const g=new THREE.Group();
+  const curve=new THREE.QuadraticBezierCurve3(new THREE.Vector3(0,-.8,.2),new THREE.Vector3(0,0,-.42),new THREE.Vector3(0,.8,.2));
+  const core=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.022,6),new THREE.MeshBasicMaterial({color:0xcffcff}));
+  const halo=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.075,8),new THREE.MeshBasicMaterial({color:0x00e5ff,transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false}));
+  const sg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-.8,.2),new THREE.Vector3(0,0,.2),new THREE.Vector3(0,.8,.2)]);
+  const str=new THREE.Line(sg,new THREE.LineBasicMaterial({color:0xffffff}));
+  const ng=new THREE.BufferGeometry().setFromPoints(Array.from({length:26},()=>new THREE.Vector3()));
+  const crk=new THREE.Line(ng,new THREE.LineBasicMaterial({color:0xaaf8ff,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,depthWrite:false}));
+  const arrow=new THREE.Group();arrow.add(new THREE.Mesh(arrowGeo,arrowMat),new THREE.Mesh(tipGeo,arrowMat));
+  g.add(core,halo,str,crk,arrow);
+  for(const o of g.children)o.frustumCulled=false;
+  g.visible=false;scene.add(g);
+  BOW={g,curve,str,sg,crk,ng,arrow,halo,pts:curve.getPoints(12)};
+}
+const _bv={f:new THREE.Vector3(),l:new THREE.Vector3(),a:new THREE.Vector3(),b:new THREE.Vector3(),c:new THREE.Vector3(),p:new THREE.Vector3(),up:new THREE.Vector3(0,1,0)};
+function armIK(side,T,pole,w){
+  const n=side>0?'l':'r',bn=k=>pf.bones[k]&&pf.bones[k][0];
+  const U=bn('upperarm_'+n),L=bn('lowerarm_'+n),W=bn('hand_'+n);if(!U||!L||!W)return null;
+  const q0u=U.quaternion.clone(),q0l=L.quaternion.clone();
+  ik2(U,L,W,T,pole);
+  U.quaternion.slerp(q0u,1-w);L.quaternion.slerp(q0l,1-w);U.updateMatrixWorld(true);
+  return W;
+}
+function bowTick(dt,thunder){
+  if(!BOW&&thunder&&pf)bowBuild();
+  if(!BOW)return;
+  // --- draw state: hold fire to draw, release to shoot ---
+  const held=thunder&&!SEL.open&&!DLG.open&&((mouseDown&&document.pointerLockElement)||PAD.fire||SP.held2);
+  const aim=held&&SP.charge<=0;
+  if(SP.charge>0){ // Charged Arrow: automatic full draw then release
+    SP.charge-=dt;SP.draw=Math.min(1,SP.draw+dt/.55);SP.hold=1;
+    if(SP.charge<=0){bowShoot(true,1);SP.draw=0;}
+  }else if(aim&&blastCd<=0){
+    if(!SP.wasAim&&audio)audio.bowDraw(P.pos,.4);
+    SP.draw=Math.min(1,SP.draw+dt/.4);SP.hold=1;
+  }else if(SP.wasAim&&!held&&SP.draw>.02){ // released
+    bowShoot(false,Math.max(.3,SP.draw));SP.draw=0;blastCd=.3;
+  }else if(!held&&SP.charge<=0){SP.draw=Math.max(0,SP.draw-dt*4);}
+  SP.wasAim=!!aim;
+  SP.hold=Math.max(0,SP.hold-dt);
+  const want=thunder&&(aim||SP.charge>0||SP.hold>0);
+  SP.bowW+=((want?1:0)-SP.bowW)*Math.min(1,dt*10);
+  const w=SP.bowW;
+  if(!thunder||w<.02){BOW.g.visible=false;return;}
+  // --- aim the arms ---
+  const f=_bv.f;cam.getWorldDirection(f);f.y=Math.max(-.15,Math.min(.35,f.y));f.normalize();{const A=window.__game.dbg.aim;if(A)f.copy(A);}
+  const l=_bv.l.crossVectors(_bv.up,f).normalize();   // character's left
+  const C=_bv.c.set(P.pos.x,P.pos.y+1.42,P.pos.z);
+  const d=SP.draw;
+  const TL=_bv.a.copy(C).addScaledVector(f,.66).addScaledVector(l,.1);TL.y-=.03;
+  const TR=_bv.b.copy(C).addScaledVector(f,.62-.5*d).addScaledVector(l,-.02-.06*d);TR.y-=.02;
+  pf.root.updateMatrixWorld(true);
+  const pL=_bv.p.copy(l).multiplyScalar(.7).addScaledVector(_bv.up,-.5).clone();
+  const WL=armIK(1,TL.clone(),pL,w);
+  const pR=l.clone().multiplyScalar(-.9).addScaledVector(f,-.4).addScaledVector(_bv.up,-.1);
+  const WR=armIK(-1,TR.clone(),pR,w);
+  // --- place the bow ---
+  const G=BOW.g;G.visible=true;
+  const hp=new THREE.Vector3();(WL||pf.root).getWorldPosition(hp);
+  G.position.copy(hp).addScaledVector(f,.08);G.lookAt(G.position.clone().sub(f));
+  G.scale.setScalar(.45+.3*w); // a bow sized for a 1.9 m hero
+  const nk=new THREE.Vector3();(WR||pf.root).getWorldPosition(nk);G.worldToLocal(nk);
+  nk.z=Math.max(nk.z,.2);nk.x=0;
+  const pa=BOW.sg.attributes.position;pa.setXYZ(1,0,0,d>.02||SP.charge>0?nk.z:.2);pa.needsUpdate=true;
+  // glow strength follows the draw; lightning crackles along the limbs
+  const k=.35+.65*d+(SP.charge>0?.3:0);
+  BOW.halo.material.opacity=.25+.5*k;BOW.halo.scale.set(1+.6*k,1,1+.6*k);
+  const cp=BOW.crk.geometry.attributes.position;
+  for(let i=0;i<26;i++){const pt=BOW.pts[(i%13)];const jit=(i%13===0||i%13===12)?0:.05+.07*k;cp.setXYZ(i,pt.x+(Math.random()-.5)*jit,pt.y+(Math.random()-.5)*jit*1.2,pt.z+(Math.random()-.5)*jit);}
+  cp.needsUpdate=true;BOW.crk.material.opacity=.5+.5*Math.random()*k;
+  // arrow nocked on the string while drawn
+  BOW.arrow.visible=d>.02||SP.charge>0;
+  BOW.arrow.position.set(0,0,Math.max(.2,nk.z)-.85);BOW.arrow.rotation.set(0,0,0);
+  BOW.arrow.scale.setScalar(SP.charge>0?1.6:1);
+}
+function bowShoot(big,str){
+  const from=new THREE.Vector3(P.pos.x,P.pos.y+1.42,P.pos.z);
+  if(BOW&&BOW.g.visible){BOW.arrow.getWorldPosition(from);}
+  makeArrow(big,str,from);
+  SP.hold=.9;
 }
 
 // ---------- loop ----------

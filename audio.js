@@ -32,6 +32,16 @@ export function synthBlast(ctx,out,buf,t){ // hero energy blast: falling saw zap
   const n=noiseNode(ctx,buf,t,.15),bp=filt(ctx,'bandpass',2600,.9),ng=ctx.createGain();n.connect(bp);bp.connect(ng);ng.connect(mix);env(ng,t,.002,.45,.1);
   const s=ctx.createOscillator(),sg=ctx.createGain();s.frequency.setValueAtTime(110,t);s.frequency.exponentialRampToValueAtTime(45,t+.2);s.connect(sg);sg.connect(mix);env(sg,t,.003,.6,.2);s.start(t);s.stop(t+.3);
 }
+export function synthDraw(ctx,out,buf,t,dur=.4){ // energy bow being drawn: rising electric hum + crackle
+  const mix=ctx.createGain();mix.gain.value=.45;mix.connect(out);
+  const o=ctx.createOscillator(),g=ctx.createGain(),lp=filt(ctx,'lowpass',1800);o.type='sawtooth';o.frequency.setValueAtTime(140,t);o.frequency.exponentialRampToValueAtTime(520,t+dur);o.connect(lp);lp.connect(g);g.connect(mix);env(g,t,dur*.8,.25,dur*.4);o.start(t);o.stop(t+dur*1.3);
+  const n=noiseNode(ctx,buf,t,dur+.1),bp=filt(ctx,'bandpass',2500,2),ng=ctx.createGain();n.connect(bp);bp.frequency.setValueAtTime(1500,t);bp.frequency.exponentialRampToValueAtTime(5200,t+dur);bp.connect(ng);ng.connect(mix);env(ng,t,dur*.7,.22,dur*.5);
+}
+export function synthRelease(ctx,out,buf,t,power=1){ // string snap + electric zap
+  const mix=ctx.createGain();mix.gain.value=.6*(.5+.5*power);mix.connect(out);
+  const o=ctx.createOscillator(),g=ctx.createGain();o.type='triangle';o.frequency.setValueAtTime(900,t);o.frequency.exponentialRampToValueAtTime(220,t+.14);o.connect(g);g.connect(mix);env(g,t,.002,.5,.16);o.start(t);o.stop(t+.25);
+  const n=noiseNode(ctx,buf,t,.16),hp=filt(ctx,'highpass',3000),ng=ctx.createGain();n.connect(hp);hp.connect(ng);ng.connect(mix);env(ng,t,.001,.4,.12);
+}
 export function synthPunch(ctx,out,buf,t){
   const mix=ctx.createGain();mix.connect(out);
   const n=noiseNode(ctx,buf,t,.12),lp=filt(ctx,'lowpass',520),g=ctx.createGain();n.connect(lp);lp.connect(g);g.connect(mix);env(g,t,.002,.9,.09);
@@ -128,6 +138,8 @@ export function createAudio({camera,P,getTraffic,vol=.5}){
   }
   A.gun=(pos,kind='pistol')=>{const n=route(pos,{ref:kind==='shotgun'?18:14});if(n)synthShot(A.ctx,n,noiseBuf,kind,A.ctx.currentTime+.005);};
   A.blast=(pos)=>{const n=route(pos,{ref:12,reverb:.2});if(n)synthBlast(A.ctx,n,noiseBuf,A.ctx.currentTime+.005);};
+  A.bowDraw=(pos,dur)=>{const n=route(pos,{ref:10,reverb:.1});if(n)synthDraw(A.ctx,n,noiseBuf,A.ctx.currentTime+.005,dur);};
+  A.bowRelease=(pos,pw)=>{const n=route(pos,{ref:12,reverb:.2});if(n)synthRelease(A.ctx,n,noiseBuf,A.ctx.currentTime+.005,pw);};
   A.punch=(pos)=>{const n=route(pos,{ref:10,reverb:.1});if(n)synthPunch(A.ctx,n,noiseBuf,A.ctx.currentTime+.005);};
   A.horn=(pos,long)=>{const n=route(pos,{ref:9,reverb:.25,maxD:140});if(n)synthHorn(A.ctx,n,A.ctx.currentTime+.01,long);};
 
