@@ -953,6 +953,7 @@ addEventListener('keydown',e=>{
   if(e.code==='Escape'&&!DLG.open){SEL.show();return;}
   if(DLG.open){DLG.key(e.code);e.preventDefault();return;}
   keys[e.code]=true;
+  if(e.code.startsWith('Arrow'))e.preventDefault(); // arrows move the hero; keep the page from scrolling
   if(e.code==='KeyK'&&!e.repeat)setCostume(COSTS[(COSTS.indexOf(COST)+1)%COSTS.length],true);
   if(e.code==='KeyF'&&!e.shiftKey)msg('No flight power',1500);
   if(e.code==='KeyQ'&&!e.repeat)power();
@@ -1089,13 +1090,13 @@ const ui=(()=>{
 
   // ----- keyboard + mouse diagram -----
   const kbKeys=[['KeyW','W',130,90,44],['KeyA','A',80,140,44],['KeyS','S',130,140,44],['KeyD','D',180,140,44],
-    ['ShiftLeft','Shift',30,230,100],['Space','Space',150,230,170],['KeyC','C',340,230,44],['KeyF','F',404,230,44],['KeyV','V',468,230,44],['KeyE','E',532,230,44]];
+    ['ShiftLeft','Shift',30,230,100],['Space','Space',150,230,170],['KeyC','C',340,230,44],['KeyQ','Q',404,230,44],['KeyV','V',468,230,44],['KeyE','E',532,230,44]];
   const kbItems=[
-    {k:'move',codes:['KeyW','KeyA','KeyS','KeyD'],p:[152,90],l:[152,50],side:'t',t:'Move',s:'W A S D'},
+    {k:'move',codes:['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'],p:[152,90],l:[152,50],side:'t',t:'Move',s:'W A S D or arrow keys'},
     {k:'sprint',codes:['ShiftLeft'],p:[80,274],l:[80,318],side:'b',t:'Sprint',s:'hold Shift'},
     {k:'jump',codes:['Space'],p:[235,274],l:[235,318],side:'b',t:'Jump / Rise',s:'Space (hold to rise)'},
     {k:'down',codes:['KeyC'],p:[362,274],l:[362,306],side:'b',t:'Descend',s:'C'},
-    {k:'fly',codes:['KeyF'],p:[426,274],l:[426,338],side:'b',t:'Toggle Flight',s:'F'},
+    {k:'fly',codes:['KeyQ'],p:[426,274],l:[426,338],side:'b',t:'Hero Power',s:'Q: Super Speed / Charged Arrow'},
     {k:'punch',codes:['KeyV'],p:[490,274],l:[490,306],side:'b',t:'Punch',s:'V'},
     {k:'talk',codes:['KeyE'],p:[554,274],l:[554,338],side:'b',t:'Talk',s:'E, near an NPC'},
     {k:'lmb',p:[658,118],l:[590,118],side:'l',t:'Energy Blast',s:'hold left click'},
@@ -1485,7 +1486,7 @@ function tick(dt){
   const f=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
   const r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
   const mv=new THREE.Vector3();
-  if(keys.KeyW)mv.add(f);if(keys.KeyS)mv.sub(f);if(keys.KeyD)mv.add(r);if(keys.KeyA)mv.sub(r);
+  if(keys.KeyW||keys.ArrowUp)mv.add(f);if(keys.KeyS||keys.ArrowDown)mv.sub(f);if(keys.KeyD||keys.ArrowRight)mv.add(r);if(keys.KeyA||keys.ArrowLeft)mv.sub(r);
   const sp=(sprint?20:12)*HS;
   let amt=1;
   if(!mv.lengthSq()&&(PAD.mx||PAD.my)){ // analog stick: direction relative to camera, speed scales with tilt
