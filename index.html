@@ -646,17 +646,17 @@ const LOOK={
 const SPK={'Victor Cross':{role:'ORACLE Handler',col:'#6b3f26'},'Frankie Vega':{role:'Street Informant',col:'#c58b5c'}};
 // ---- quest story: edit the text here. Each list is one "page" of dialogue ----
 const Q=[
- {giver:'Victor Cross',title:'Clear the Streets',text:'Take out 4 Corvetti thugs.',type:'thug',n:4,xp:100,
+ {giver:'Victor Cross',title:'Clear the Streets',text:'Take out 20 Corvetti thugs.',type:'thug',n:20,xp:100,
   offer:["Silver Star. Good, you found the plaza. ORACLE doesn't usually take walk-ins, but this city is running out of time.",
    "Six months ago the Corvetti family was a rumor. Today they own the corners, the corner stores, and half the cops' phone numbers. Nobody on these blocks sleeps with the windows open anymore.",
    "Their thugs shake down every shop from here to the river. Pay up or watch it burn. Mrs. Okafor's bakery paid for three months. Then they took the oven anyway.",
    "I can't send ORACLE agents. A badge on a Corvetti corner starts a war and gets someone killed. You, though? You're a story the street already tells itself.",
-   "Take out four of their thugs. Don't be cruel, don't be clever. Just be seen. Let them learn there is something standing between them and this neighborhood."],
+   "Take out twenty of their thugs. Don't be cruel, don't be clever. Just be seen. Let them learn there is something standing between them and this neighborhood."],
   yes:"I'm in.",no:"Not now.",
   accept:["Good. Follow the yellow arrow at the edge of your map. And Silver Star, the police are with us on this, even when it doesn't look like it. Watch for the blue flashes. That's an officer who needs you."],
   decline:["Take your time. But the streets won't."],
-  remind:["Four Corvetti thugs, Silver Star. Keep the yellow arrow in sight. They're out there, and so are the people counting on you."],
-  done:["Four down, and the word is already moving. The corner boys are saying a man in silver is hitting them from the sky.",
+  remind:["Twenty Corvetti thugs, Silver Star. Keep the yellow arrow in sight. They're out there, and so are the people counting on you."],
+  done:["Twenty down, and the word is already moving. The corner boys are saying a man in silver is hitting them from the sky.",
    "Good. Scared men talk, and talkers make mistakes. One of them let slip that the Corvetti guns are getting better. Much better.",
    "That's more than I can chase from this plaza. I know a man who hears everything at the bottom of every bottle in town. Frankie Vega. West side of the city. Find him, and don't scare him."]},
  {giver:'Frankie Vega',title:'Hired Muscle',text:'Drop 3 Corvetti enforcers.',type:'enforcer',n:3,xp:200,
@@ -793,7 +793,7 @@ function spawn(type,x,z){
   g.position.set(x,0,z);
   E.push({type,t,g,gun:f.gun,anim:f.anim,bar,hp:t.hp,home:new THREE.Vector3(x,0,z),alive:true,respawnAt:0,hideAt:0,cd:0,atk:-1,hit:false});
 }
-[[60,60,'thug',4],[-100,60,'thug',4],[140,-100,'enforcer',3],[-140,-140,'enforcer',3],[180,180,'thug',3]]
+[[60,60,'thug',4],[-100,60,'thug',4],[140,-100,'enforcer',3],[-140,-140,'enforcer',3],[180,180,'thug',3],[100,20,'thug',4],[-60,-60,'thug',4],[20,-140,'thug',4]]
   .forEach(([x,z,t,n])=>{for(let k=0;k<n;k++)spawn(t,x+(k%2?8.2:-8.2)+R(-.4,.4),z+(k&2?8.2:-8.2)+R(-.4,.4));}); // camp on the sidewalk corners of an intersection, not in the road
 spawn('boss',228.2,228.2);
 
