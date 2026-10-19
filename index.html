@@ -495,6 +495,28 @@ function applyCostume(fig,key){
 // ---------- player ----------
 const pf=figure('m',0xffffff);
 const P={f:pf,g:pf.g,pivot:pf.pivot,vy:0,hp:100,xp:0,fly:false,moving:false,t:0,flyBlend:0,hand:'r',pu:-1,pendingHit:false};
+// ---------- leveling: XP -> level -> stronger powers (tune the numbers here) ----------
+const LV_MAX=20;
+const xpAt=L=>50*L*(L-1);                       // total XP needed to reach level L: Lv2 100 · Lv3 300 · Lv5 1000 · Lv10 4500 · Lv20 19000
+const LV={n:1,mul:1,maxHp:100,regen:1};         // mul = damage multiplier for ALL your attacks (punch, arrows, blast)
+const LV_UNLOCK={8:'Arrows pierce 1 more enemy',15:'Arrows pierce another enemy',20:'MAX LEVEL'};
+function lvOf(xp){let L=1;while(L<LV_MAX&&xp>=xpAt(L+1))L++;return L;}
+function applyLevel(){const L=LV.n;LV.mul=1+.1*(L-1);LV.maxHp=100+10*(L-1);LV.regen=1+.05*(L-1);}
+const lvEl=document.createElement('div');lvEl.id='lvup';
+lvEl.style.cssText='position:fixed;left:50%;top:20%;transform:translateX(-50%);display:none;z-index:70;pointer-events:none;text-align:center;color:#fff;background:linear-gradient(#111b33ee,#080d1aee);border:2px solid #ffd24a;border-radius:12px;padding:14px 28px;box-shadow:0 0 28px #ffd24a88;font-family:sans-serif';
+document.body.appendChild(lvEl);let lvT=0;
+function lvBanner(){
+  const hero=COST==='thunder'?'Charged Arrow recharges faster':'Super Speed gets faster';
+  lvEl.innerHTML=`<div style="font-size:30px;font-weight:800;letter-spacing:.12em;color:#ffd24a">LEVEL UP!</div><div style="font-size:22px;margin:2px 0 6px">Level ${LV.n}</div><div style="font-size:14px;opacity:.9">Max HP ${LV.maxHp} · Power +${Math.round((LV.mul-1)*100)}%<br>${hero}${LV_UNLOCK[LV.n]?' · '+LV_UNLOCK[LV.n]:''}</div>`;
+  lvEl.style.display='block';clearTimeout(lvT);lvT=setTimeout(()=>lvEl.style.display='none',4200);
+}
+function gainXP(n){
+  P.xp+=n;try{localStorage.setItem('ultras_xp',String(P.xp));}catch(e){}
+  const L=lvOf(P.xp);if(L>LV.n){LV.n=L;applyLevel();P.hp=LV.maxHp;lvBanner();}  // level-up fully heals
+}
+try{P.xp=+localStorage.getItem('ultras_xp')||0;}catch(e){}
+{const dbgL=new URLSearchParams(location.search).get('level');if(dbgL)P.xp=xpAt(Math.min(LV_MAX,Math.max(1,+dbgL||1)));} // test: index.html?level=10
+LV.n=lvOf(P.xp);applyLevel();P.hp=LV.maxHp;
 P.pos=P.g.position;P.pos.set(0,0,10);
 P.anim=pf.root?new Anim(pf.root,CLIPS):null;P.procOn=false;P.combo=0;
 if(P.anim){P.anim.play('Idle_Loop',{fade:0});P.anim.update(0);}
@@ -746,7 +768,7 @@ function interact(){
       if(gv.name!==active.giver)return DLG.start(gv.name,[`You've finished the job, Silver Star? Then report to ${active.giver}. That's who's waiting on it.`],{});
       const q=active;
       return DLG.start(gv.name,rounds>0?AGAIN.done:q.done,{end:()=>{
-        P.xp+=q.xp;msg(`Quest complete: ${q.title}! +${q.xp} XP`,5000);
+        gainXP(q.xp);msg(`Quest complete: ${q.title}! +${q.xp} XP`,5000);
         active=null;qi=(qi+1)%Q.length;if(qi===0)rounds++;
       }});
     }
@@ -767,9 +789,9 @@ function interact(){
 
 // ---------- enemies (respawn after defeat) ----------
 const T={
-  thug:{hp:60,dmg:8,models:['men_Punk','men_Casual_Hoodie','men_Casual_2'],s:1,spd:7,name:'Corvetti Thug',rt:20,fb:120,ar:45,guns:['Pistol_1','Pistol_3','Pistol_4','Revolver_1','Revolver_2'],rng:9,rof:1.5,bdmg:5},
-  enforcer:{hp:130,dmg:14,models:['men_Swat','women_Soldier'],s:1.15,spd:6,name:'Enforcer',rt:30,fb:150,ar:60,guns:['SubmachineGun_1','SubmachineGun_3','SubmachineGun_4','AssaultRifle2_4'],rng:13,rof:.9,bdmg:7},
-  boss:{hp:450,dmg:25,models:['men_King'],s:1.5,spd:5,name:'Dominic "The Ledger" Corvetti',rt:60,fb:300,ar:120,guns:['Bullpup_2','AssaultRifle_3','Shotgun_SawedOff'],rng:11,rof:.7,bdmg:12}
+  thug:{xp:10,hp:60,dmg:8,models:['men_Punk','men_Casual_Hoodie','men_Casual_2'],s:1,spd:7,name:'Corvetti Thug',rt:20,fb:120,ar:45,guns:['Pistol_1','Pistol_3','Pistol_4','Revolver_1','Revolver_2'],rng:9,rof:1.5,bdmg:5},
+  enforcer:{xp:25,hp:130,dmg:14,models:['men_Swat','women_Soldier'],s:1.15,spd:6,name:'Enforcer',rt:30,fb:150,ar:60,guns:['SubmachineGun_1','SubmachineGun_3','SubmachineGun_4','AssaultRifle2_4'],rng:13,rof:.9,bdmg:7},
+  boss:{xp:150,hp:450,dmg:25,models:['men_King'],s:1.5,spd:5,name:'Dominic "The Ledger" Corvetti',rt:60,fb:300,ar:120,guns:['Bullpup_2','AssaultRifle_3','Shotgun_SawedOff'],rng:11,rof:.7,bdmg:12}
 };
 const E=[];
 // enemy bullets: glowing tracers that hurt the hero on contact
@@ -887,7 +909,7 @@ function damageEnemy(e,amt,now){
   e.bar.scale.x=Math.max(.01,2*e.hp/e.t.hp);
   if(e.hp>0&&e.anim&&e.atk<0)e.anim.once('HitRecieve',{dur:.35});
   if(e.hp<=0){
-    traffic.noteDefeat(e);e.alive=false;e.down=true;e.loaded=false;e.cuffed=false;e.claimedBy=null;e.respawnAt=now+e.t.fb;e.hideAt=Infinity;P.xp+=10;e.atk=-1;e.bar.visible=false;
+    traffic.noteDefeat(e);e.alive=false;e.down=true;e.loaded=false;e.cuffed=false;e.claimedBy=null;e.respawnAt=now+e.t.fb;e.hideAt=Infinity;gainXP(e.t.xp||10);e.atk=-1;e.bar.visible=false;
     if(e.anim)e.anim.once('Death',{hold:true,fade:.1});else e.g.visible=false;
     if(active&&active.type===e.type&&prog<active.n){
       prog++;
@@ -898,7 +920,7 @@ function damageEnemy(e,amt,now){
 function hurtPlayer(d){
   P.hp-=d*(isThunder()?.75:1); // Body Armor
   if(P.anim&&!P.procOn&&P.hp>0)P.anim.once('Hit_Chest',{dur:.3});
-  if(P.hp<=0){P.hp=100;P.pos.set(0,0,10);msg('ORACLE extracted you. Victor Cross: "Try not to die again."');}
+  if(P.hp<=0){P.hp=LV.maxHp;P.pos.set(0,0,10);msg('ORACLE extracted you. Victor Cross: "Try not to die again."');}
 }
 
 // ---------- combat ----------
@@ -907,7 +929,7 @@ const blastGeo=new THREE.SphereGeometry(.4),blastMat=new THREE.MeshBasicMaterial
 let blastCd=0,meleeCd=0;
 var SP={draw:0,charge:0,bowW:0,hold:0,wasAim:false,on:false,S:3,flare:0,lit:false,flareT:0,flareCd:0,arrowCd:0,tr:0,noSrcT:0};
 function isThunder(){return COST==='thunder';}
-function hs(){return SP.on&&!isThunder()?SP.S:1;}   // Silver Star's Super Speed: everything he does runs this much faster
+function hs(){return SP.on&&!isThunder()?SP.S+.1*(LV.n-1):1;}   // Silver Star's Super Speed: everything he does runs this much faster
 const arrowGeo=new THREE.CylinderGeometry(.035,.035,1.7,6).rotateX(Math.PI/2),tipGeo=new THREE.ConeGeometry(.12,.4,8).rotateX(-Math.PI/2).translate(0,0,.95);
 const arrowMat=new THREE.MeshBasicMaterial({color:0x00f0ff}),fxList=[];
 function makeArrow(big,str=1,from){
@@ -915,12 +937,12 @@ function makeArrow(big,str=1,from){
   if(big)g.scale.setScalar(2.4);
   const dir=new THREE.Vector3();cam.getWorldDirection(dir);dir.y=Math.max(dir.y,-.02);dir.normalize(); // arrows fly level rather than into the pavement
   if(from)g.position.copy(from);else{g.position.copy(P.pos);g.position.y+=1.4;}g.position.addScaledVector(dir,.8);g.lookAt(g.position.clone().add(dir));
-  scene.add(g);shots.push({m:g,dir,life:big?2.2:1.6,arrow:true,big,speed:big?95:90+70*str,dmg:big?0:Math.round(22+28*str),pierce:big?1:(str>.7?2:1),hit:big?null:new Set()});
+  scene.add(g);shots.push({m:g,dir,life:big?2.2:1.6,arrow:true,big,speed:big?95:90+70*str,dmg:big?0:Math.round((22+28*str)*LV.mul),pierce:big?1:(str>.7?2:1)+(LV.n>=8?1:0)+(LV.n>=15?1:0),hit:big?null:new Set()});
   if(audio){audio.bowRelease(P.pos,big?1:str);audio.blast(P.pos);}if(civ)civ.alarm(P.pos,30);
 }
 function explode(pos){
-  const R9=9;
-  for(const e of E){if(!e.alive)continue;const c=e.g.position.clone();c.y+=.9*e.t.s;const d=c.distanceTo(pos);if(d<R9)damageEnemy(e,Math.round(80*(1-.5*d/R9)),clockT);}
+  const R9=9+.25*(LV.n-1);
+  for(const e of E){if(!e.alive)continue;const c=e.g.position.clone();c.y+=.9*e.t.s;const d=c.distanceTo(pos);if(d<R9)damageEnemy(e,Math.round(80*LV.mul*(1-.5*d/R9)),clockT);}
   const m=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),new THREE.MeshBasicMaterial({color:0x66f6ff,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false}));
   m.position.copy(pos);scene.add(m);fxList.push({m,t:0,dur:.45,r:R9});
   if(audio)audio.blast(pos);if(civ)civ.alarm(pos,60);
@@ -933,7 +955,7 @@ function power(){ // Q / R3: Silver Star toggles Super Speed, Thunder Bolt loose
   if(SEL.open||DLG.open)return;
   if(isThunder()){
     if(SP.arrowCd>0){msg('Charged Arrow ready in '+Math.ceil(SP.arrowCd)+'s',1200);return;}
-    if(SP.charge>0)return;SP.arrowCd=8;SP.charge=.55;SP.draw=0;if(audio)audio.bowDraw(P.pos,.55);
+    if(SP.charge>0)return;SP.arrowCd=Math.max(4,8-.25*(LV.n-1));SP.charge=.55;SP.draw=0;if(audio)audio.bowDraw(P.pos,.55);
   }else{SP.on=!SP.on;msg(SP.on?'SUPER SPEED ON':'Super speed off',1500);}
   refreshPw();
 }
@@ -944,7 +966,7 @@ function melee(now){
   if(P.anim&&!P.procOn){P.anim.busy=0;P.anim.once(COMBO[P.combo%COMBO.length],{dur:PUNCH_DUR});P.combo++;}
 }
 function punchLands(now){
-  for(const e of E)if(e.alive&&e.g.position.distanceTo(P.pos)<3+1.5*e.t.s){if(audio)audio.punch(e.g.position);damageEnemy(e,40,now);}
+  for(const e of E)if(e.alive&&e.g.position.distanceTo(P.pos)<3+1.5*e.t.s){if(audio)audio.punch(e.g.position);damageEnemy(e,Math.round(40*LV.mul),now);}
 }
 
 // ---------- input ----------
@@ -1223,7 +1245,7 @@ const ui=(()=>{
   // ----- per-frame -----
   function update(dt){
     // health bar
-    const f=Math.max(0,Math.min(1,P.hp/100));
+    const f=Math.max(0,Math.min(1,P.hp/LV.maxHp));
     if(P.hp<H.last-.01){H.flash=1;H.hold=.55;}
     H.fill=f; // fill follows HP exactly
     H.last=P.hp;
@@ -1524,7 +1546,7 @@ function tick(dt){
   P.pos.z=Math.max(-LIM,Math.min(LIM,P.pos.z));
   // model faces +Z, game forward is -Z at yaw 0
   P.g.rotation.y=yaw+Math.PI+((window.__game&&window.__game.dbg.face)||0);
-  P.hp=Math.min(100,P.hp+(isThunder()?2:6)*dt); // Silver Star regenerates 3x faster
+  P.hp=Math.min(LV.maxHp,P.hp+(isThunder()?2:6)*LV.regen*dt); // Silver Star regenerates 3x faster
   // procedural pose: fly = superhero lean, walk = bob, punch = lunge
   const air=P.pos.y>gy+.2;
   P.t+=dt*(P.moving?(sprint?14:9):2);
@@ -1643,7 +1665,8 @@ function tick(dt){
   }
 
   ui.update(dt);
-  hudEl.innerHTML=`XP ${P.xp} &nbsp; ${P.fly?'FLYING':'GROUND'}<br>`+
+  hudEl.innerHTML=(()=>{const a=xpAt(LV.n),b=LV.n>=LV_MAX?a:xpAt(LV.n+1),pc=LV.n>=LV_MAX?100:Math.round(100*(P.xp-a)/(b-a));
+      return `<b style="color:#ffd24a">LV ${LV.n}</b> &nbsp; XP ${P.xp}${LV.n>=LV_MAX?' (MAX)':' / '+b} &nbsp; ${P.fly?'FLYING':'GROUND'}<div style="height:5px;background:#fff3;border-radius:3px;margin:3px 0 4px"><div style="height:100%;width:${pc}%;background:#ffd24a;border-radius:3px"></div></div>`;})()+
     `${traffic.stats.active?'<span style="color:#7fb0ff">POLICE ON SCENE</span> · ':''}Officers down ${traffic.stats.down} · Arrests ${traffic.stats.arrests}<br>`+
     `Quest: ${active?`${active.title} ${Math.min(prog,active.n)}/${active.n}${prog>=active.n?' (turn in)':''}`:'none (talk to '+Q[qi].giver+')'}`;
   {const o=window.__game.dbg.camOv;if(o){const e=o();cam.position.copy(e.p);cam.lookAt(e.l);}}
