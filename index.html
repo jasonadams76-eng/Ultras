@@ -528,6 +528,7 @@ const HEROES=[
    story:['Henry Struk was a skilled archer preparing for the Olympics when lightning struck him during practice. He woke able to control and generate lightning.','With a suit he designed, he focuses that power into arrows of electricity fired from a custom bow, and he is unaffected by electricity from any source. Wanting to help as many people as possible, Henry now teaches archery part time and fights crime as Thunder Bolt.']}
 ];
 const COSTS=['silver','thunder','classic'];let COST='silver';
+const heroName=()=>COST==='thunder'?'Thunder Bolt':'Silver Star'; // what NPCs call the hero you picked
 function setCostume(id,say){
   const mesh=id==='silver'?STAR.mesh:id==='thunder'?STAR.tb:null;
   if(id!=='classic'&&!mesh)id='classic';
@@ -656,7 +657,7 @@ const Q=[
   accept:["Good. Follow the yellow arrow at the edge of your map. And Silver Star, the police are with us on this, even when it doesn't look like it. Watch for the blue flashes. That's an officer who needs you."],
   decline:["Take your time. But the streets won't."],
   remind:["Twenty Corvetti thugs, Silver Star. Keep the yellow arrow in sight. They're out there, and so are the people counting on you."],
-  done:["Twenty down, and the word is already moving. The corner boys are saying a man in silver is hitting them from the sky.",
+  done:["Twenty down, and the word is already moving. The corner boys are saying a masked hero is hitting them from the sky.",
    "Good. Scared men talk, and talkers make mistakes. One of them let slip that the Corvetti guns are getting better. Much better.",
    "That's more than I can chase from this plaza. I know a man who hears everything at the bottom of every bottle in town. Frankie Vega. West side of the city. Find him, and don't scare him."]},
  {giver:'Frankie Vega',title:'Hired Muscle',text:'Drop 3 Corvetti enforcers.',type:'enforcer',n:3,xp:200,
@@ -702,7 +703,7 @@ const DLG=(()=>{
   }
   D.start=(who,p,o)=>{ // o: {choices:[yes,no], end:(result)=>{}}
     const s=SPK[who]||{role:'',col:'#667'};nm.textContent=who;rl.textContent=s.role;pt.style.background=s.col;pt.textContent=who.split(' ').map(w=>w[0]).join('');
-    pages=p;idx=0;shown=0;opts=o&&o.choices||null;sel=0;done=o&&o.end||null;D.open=true;stickHeld=true;el.style.display='block';mouseDown=false;render();
+    pages=p.map(t=>t.replace(/Silver Star/g,heroName()));idx=0;shown=0;opts=o&&o.choices||null;sel=0;done=o&&o.end||null;D.open=true;stickHeld=true;el.style.display='block';mouseDown=false;render();
   };
   function close(res){D.open=false;el.style.display='none';const f=done;done=null;if(f)f(res);}
   D.advance=()=>{
